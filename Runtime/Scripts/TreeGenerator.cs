@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace VLNature
@@ -26,7 +24,6 @@ namespace VLNature
         [SerializeField] GameObject[] foliagePrefab;
 
         [Header("Settings")]
-        public Vector3 position = Vector3.zero;
         public int height = 5;
         [Range(3, 6)]
         public int maxTiers = 5;
@@ -40,7 +37,7 @@ namespace VLNature
 
         void Start()
         {
-            CreateSection(new SimpleTransform(position, Vector3.one, Quaternion.identity), 0);
+            CreateSection(new SimpleTransform(transform.position, Vector3.one, Quaternion.identity), 0);
         }
         private void CreateSection(SimpleTransform origin, int tier, int oddEven = 1)
         {
