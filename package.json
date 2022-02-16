@@ -1,0 +1,10 @@
+{
+	"name": "se.tarlinder.vl-nature",
+	"version": "1.0.0",
+	"displayName": "Voxel-like Nature",
+	"description": "Customizable trees made of voxelish components.",
+	"unity": "2019.1",
+	"dependencies": {
+	},
+	"keywords": ["voxel", "nature", "trees"]
+}
