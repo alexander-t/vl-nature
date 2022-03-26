@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace VLNature
@@ -15,29 +16,52 @@ namespace VLNature
             this.rotation = rotation;
         }
     }
- 
+
     public class TreeGenerator : MonoBehaviour
     {
         [Header("Prefabs")]
         [Tooltip("Prefabs that make up the trunk, branches, and leaves")]
-        [SerializeField] GameObject sectionPrefab;
+        [SerializeField] GameObject trunkBranchPrefab;
+        [SerializeField] GameObject trunkBranchLowResPrefab;
         [SerializeField] GameObject[] foliagePrefab;
+        [SerializeField] GameObject mediumResPrefab;
+        [SerializeField] GameObject lowResPrefab;
 
         [Header("Settings")]
         public int height = 5;
         [Range(3, 6)]
         public int maxTiers = 5;
         [Range(0.0f, 1.0f)]
-        [SerializeField] float probabilityToBranchInMidsection = 0.5f;
+        public float probabilityToBranchInMidsection = 0.5f;
         [Range(0.0f, 1.0f)]
-        [SerializeField] float probabilityToBranchOnTrunk = 0.0f;
-        [SerializeField] bool showFoliage = true;
+        public float probabilityToBranchOnTrunk = 0.0f;
+        public bool showFoliage = true;
+        public bool pruneSmallBranches = true;
+        public bool createLODGroup = true;
 
         private int[] ODD_EVEN = { -1, 1 };
 
+        private LODGroup lodGroup;
+        private List<Renderer> lod0Renderers = new List<Renderer>();
+        private List<Renderer> lod1Renderers = new List<Renderer>();
+        private List<Renderer> lod2Renderers = new List<Renderer>();
+
         void Start()
         {
+
             CreateSection(new SimpleTransform(transform.position, Vector3.one, Quaternion.identity), 0);
+
+            if (createLODGroup)
+            {
+                lodGroup = gameObject.AddComponent<LODGroup>();
+                LOD[] lods = new LOD[3];
+                lods[0] = new LOD(0.5f, lod0Renderers.ToArray());
+                lods[1] = new LOD(0.3f, lod1Renderers.ToArray());
+                lods[2] = new LOD(0.1f, lod2Renderers.ToArray());
+                lodGroup.SetLODs(lods);
+                lodGroup.fadeMode = LODFadeMode.SpeedTree;
+                lodGroup.RecalculateBounds();
+            }
         }
         private void CreateSection(SimpleTransform origin, int tier, int oddEven = 1)
         {
@@ -66,19 +90,55 @@ namespace VLNature
                 newOrigin.position = newOrigin.rotation * (newOrigin.position - origin.position) + origin.position;
             }
 
-            GameObject firstSection = Instantiate(sectionPrefab, origin.position, newOrigin.rotation);
-            firstSection.transform.localScale = new Vector3(1, height, 1) * origin.scale.y * 0.34f;
-            GameObject section2 = Instantiate(sectionPrefab, origin.position + ((newOrigin.position - origin.position) / 3.0f), newOrigin.rotation);
-            section2.transform.localScale = new Vector3(firstSection.transform.localScale.x * 0.9f, firstSection.transform.localScale.y, firstSection.transform.localScale.z * 0.9f);
-            GameObject section3 = Instantiate(sectionPrefab, origin.position + ((newOrigin.position - origin.position) * (2.0f / 3)), newOrigin.rotation);
-            section3.transform.localScale = new Vector3(firstSection.transform.localScale.x * 0.8f, firstSection.transform.localScale.y, firstSection.transform.localScale.z * 0.8f);
+            // Optimization: Don't draw branches above a certain height
+            if (!pruneSmallBranches || (pruneSmallBranches && tier <= 3))
+            {
+                // Divide into three separate sections
+                GameObject lowSection = Instantiate(trunkBranchPrefab, origin.position, newOrigin.rotation);
+                lowSection.transform.localScale = new Vector3(lowSection.transform.localScale.x * origin.scale.x, origin.scale.y * 0.34f * height, lowSection.transform.localScale.z * origin.scale.z);
+                GameObject midSection = Instantiate(trunkBranchPrefab, origin.position + ((newOrigin.position - origin.position) / 3.0f), newOrigin.rotation);
+                midSection.transform.localScale = new Vector3(lowSection.transform.localScale.x * 0.9f, lowSection.transform.localScale.y, lowSection.transform.localScale.z * 0.9f);
+                GameObject topSection = Instantiate(trunkBranchPrefab, origin.position + ((newOrigin.position - origin.position) * (2.0f / 3)), newOrigin.rotation);
+                topSection.transform.localScale = new Vector3(lowSection.transform.localScale.x * 0.8f, lowSection.transform.localScale.y, lowSection.transform.localScale.z * 0.8f);
+                lod0Renderers.Add(lowSection.GetComponentInChildren<Renderer>());
+                lod0Renderers.Add(midSection.GetComponentInChildren<Renderer>());
+                lod0Renderers.Add(topSection.GetComponentInChildren<Renderer>());
 
-            Debug.DrawLine(origin.position, newOrigin.position, Color.green, 60);
+                if (createLODGroup)
+                {
+                    // LOD 1 & 2: Use lowres prefab
+                    GameObject lowResSection = Instantiate(trunkBranchLowResPrefab, origin.position, newOrigin.rotation);
+                    lowResSection.transform.localScale = new Vector3(lowSection.transform.localScale.x, height * origin.scale.y, lowSection.transform.localScale.z);
+                    lod1Renderers.Add(lowResSection.GetComponentInChildren<Renderer>());
+                    lod2Renderers.Add(lowResSection.GetComponentInChildren<Renderer>());
+                }
+            }
+
+            //Debug.DrawLine(origin.position, newOrigin.position, Color.green, 60);
 
             if (tier + 1 == maxTiers && showFoliage)
             {
                 GameObject foliage = Instantiate(foliagePrefab[Random.Range(0, foliagePrefab.Length)], newOrigin.position, Quaternion.Euler(0, Random.Range(0.0f, 360), 0));
                 foliage.transform.localScale *= Random.Range(3, 8);
+                lod0Renderers.Add(foliage.GetComponentInChildren<Renderer>()); // Special case: Voxel asset has its renderer in the child object!
+
+                if (createLODGroup)
+                {
+                    GameObject mediumResFoliage = Instantiate(mediumResPrefab, newOrigin.position, foliage.transform.rotation);
+                    mediumResFoliage.transform.localScale = foliage.transform.localScale;
+                    lod1Renderers.Add(mediumResFoliage.GetComponent<Renderer>());
+                    foreach (Renderer renderer in mediumResFoliage.GetComponentsInChildren<Renderer>())
+                    {
+                        lod1Renderers.Add(renderer);
+                    }
+
+                    GameObject lowResFoliage = Instantiate(lowResPrefab, newOrigin.position, foliage.transform.rotation);
+                    lowResFoliage.transform.localScale = foliage.transform.localScale;
+                    foreach (Renderer renderer in lowResFoliage.GetComponentsInChildren<Renderer>())
+                    {
+                        lod2Renderers.Add(renderer);
+                    }
+                }
             }
 
             newOrigin.scale.x = newOrigin.scale.z *= 0.7f; // Shrink the diameter proportionally
